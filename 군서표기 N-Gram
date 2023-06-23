@@ -1,0 +1,70 @@
+### 군서표기 N-Gram 
+
+
+# 구글 드라이브 연결을 위한 기본 세팅
+!pip install -U -q PyDrive
+
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
+from google.colab import auth
+from oauth2client.client import GoogleCredentials
+
+# 1. Authenticate and create the PyDrive client.
+auth.authenticate_user()
+gauth = GoogleAuth()
+gauth.credentials = GoogleCredentials.get_application_default()
+drive = GoogleDrive(gauth)
+
+
+## 문서 ID로 실제 파일 불러오기
+## 대학장구_대학관견 원문데이터 https://drive.google.com/file/d/1VBHT54O0BdlbFbYJF4cR-fXOFdnE6gxZ/view?usp=sharing
+## 군서표기 https://drive.google.com/file/d/1uJJoOmRzrnP33Ok3-ta-GNoqx7kltvZD/view?usp=drive_link
+rawdata_downloaded = drive.CreateFile({'id': '1uJJoOmRzrnP33Ok3-ta-GNoqx7kltvZD'})
+rawdata_downloaded.GetContentFile('군서표기_rawdata1.tsv')
+
+import pandas as pd
+
+# "rawdata.tsv" 파일의 내용을 "원본데이터" 변수로 불러오기
+rawdata = pd.read_csv('군서표기_rawdata1.tsv', sep="\t")
+rawdata
+
+def split_word(word):
+    return [char for char in word]
+
+from nltk import ngrams
+
+NGram크기 = 2
+
+def nltkngrams(문장):
+  n_grams = list(ngrams(문장, int(NGram크기)))
+  return [ ''.join(grams) for grams in n_grams]
+
+# "원본데이터"를 대상으로 "jieba"를 사용해서 형태소 분석하기
+저장공간  = [] ## 모든 결과를 저장할 빈 공간으로 "저장공간" 설정
+
+for index, row in rawdata.iterrows():# 원본데이터의 컬럼(열)을 불러와서 반복할 준비!
+    textdata = row[9]  # 분석에서 사용할 텍스트 정보가 있는 열을 지정해준다. 주의! python은 0부터 시작한다!
+    type = row[2]  # 분석에서 사용할 분류 정보가 있는 열을 지정해준다. 주의! python은 0부터 시작한다!
+    Ngram = nltkngrams(str(textdata)) #결측값있는열제거
+    for grams in Ngram:
+      형태소종합 = [grams, type,1]  # 형태소종합에 분류정보와 카운트정보를 추가한다.
+      저장공간.append(형태소종합) # 형태소종합의 내용을 종합하여 저장한다.
+
+# 단일 데이터프레임 구조로 변환
+분석통합 = pd.DataFrame(저장공간)
+# "분석통합" 변수의 컬럼(열) 이름 변경
+분석통합.columns = ["한자", "분류", "카운트"]
+# "분석통합" 변수의 저장 내용 확인
+분석통합
+
+# "분석통합" 변수의 내용을 ngram분리, 분류가 같은 것을 합치고, 카운트의 총합을 구해서 "그룹통합" 변수에 저장한다.
+그룹통합 = 분석통합.groupby(['한자', "분류"])['카운트'].sum()
+# "그룹통합" 변수의 내용을 데이터프레임 형식으로 변환해서 "그룹통합" 변수에 저장한다.
+그룹통합 = pd.DataFrame(그룹통합)
+그룹통합
+
+# "그룹통합" 변수의 내용을 "(n그램 크기) + gram_분석결과.csv" 파일로 저장한다.
+# header는 컬럼(열) 정보의 포함 여부이다.
+# encoding은 문자코드를 선택하는 것이다. python에서는 기본적으로 utf-8(유니코드)를 사용한다.
+
+그룹통합.to_csv(str(NGram크기)+'gram_분석결과.csv', header='true', sep='\t', encoding='utf-8')
